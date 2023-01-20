@@ -22,9 +22,13 @@ THE SOFTWARE.
 package cmd
 
 import (
+	"context"
 	"fmt"
+	"log"
 	"os"
 
+	gpt3 "github.com/PullRequestInc/go-gpt3"
+	"github.com/joho/godotenv"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 )
@@ -34,16 +38,41 @@ var cfgFile string
 // rootCmd represents the base command when called without any subcommands
 var rootCmd = &cobra.Command{
 	Use:   "chatgpt",
-	Short: "A brief description of your application",
-	Long: `A longer description that spans multiple lines and likely contains
-examples and usage of using your application. For example:
-
-Cobra is a CLI library for Go that empowers applications.
-This application is a tool to generate the needed files
-to quickly create a Cobra application.`,
+	Short: "ChatGPT CLI",
+	Long:  `Have fun with ChatGPT in your terminal.`,
 	// Uncomment the following line if your bare application
 	// has an action associated with it:
-	// Run: func(cmd *cobra.Command, args []string) { },
+	Run: func(cmd *cobra.Command, args []string) {
+		err := godotenv.Load()
+		if err != nil {
+			log.Fatalln("Error loading .env file")
+		}
+
+		apiKey := os.Getenv("OPENAPI_API_KEY")
+		if apiKey == "" {
+			log.Fatalln("Missing OPENAPI API KEY")
+		}
+
+		ctx := context.Background()
+		client := gpt3.NewClient(apiKey)
+
+		message := viper.GetString("message")
+		if message == "" {
+			cmd.Help()
+			os.Exit(0)
+		}
+
+		resp, err := client.Completion(ctx, gpt3.CompletionRequest{
+			Prompt:    []string{message},
+			MaxTokens: gpt3.IntPtr(30),
+			Stop:      []string{"."},
+			Echo:      true,
+		})
+		if err != nil {
+			log.Fatalln(err)
+		}
+		fmt.Println(resp.Choices[0].Text)
+	},
 }
 
 // Execute adds all child commands to the root command and sets flags appropriately.
@@ -62,11 +91,14 @@ func init() {
 	// Cobra supports persistent flags, which, if defined here,
 	// will be global for your application.
 
-	rootCmd.PersistentFlags().StringVar(&cfgFile, "config", "", "config file (default is $HOME/.chatgpt.yaml)")
+	// rootCmd.PersistentFlags().StringVar(&cfgFile, "config", "", "config file (default is $HOME/.chatgpt.yaml)")
 
 	// Cobra also supports local flags, which will only run
 	// when this action is called directly.
-	rootCmd.Flags().BoolP("toggle", "t", false, "Help message for toggle")
+	// rootCmd.Flags().BoolP("toggle", "t", false, "Help message for toggle")
+
+	rootCmd.Flags().StringP("message", "m", "", "Your message to ChatGPT")
+	viper.BindPFlag("message", rootCmd.Flags().Lookup("message"))
 }
 
 // initConfig reads in config file and ENV variables if set.
