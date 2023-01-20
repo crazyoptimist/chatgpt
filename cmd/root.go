@@ -22,6 +22,7 @@ THE SOFTWARE.
 package cmd
 
 import (
+	"bufio"
 	"context"
 	"fmt"
 	"log"
@@ -34,6 +35,25 @@ import (
 )
 
 var cfgFile string
+var ctx context.Context
+var client gpt3.Client
+
+func GetResponse(client gpt3.Client, ctx context.Context, quesiton string) {
+	err := client.CompletionStreamWithEngine(ctx, gpt3.TextDavinci003Engine, gpt3.CompletionRequest{
+		Prompt: []string{
+			quesiton,
+		},
+		MaxTokens:   gpt3.IntPtr(3000),
+		Temperature: gpt3.Float32Ptr(0),
+	}, func(resp *gpt3.CompletionResponse) {
+		fmt.Print(resp.Choices[0].Text)
+	})
+	if err != nil {
+		fmt.Println(err)
+		os.Exit(13)
+	}
+	fmt.Printf("\n")
+}
 
 // rootCmd represents the base command when called without any subcommands
 var rootCmd = &cobra.Command{
@@ -43,41 +63,45 @@ var rootCmd = &cobra.Command{
 	// Uncomment the following line if your bare application
 	// has an action associated with it:
 	Run: func(cmd *cobra.Command, args []string) {
-		err := godotenv.Load()
-		if err != nil {
-			log.Fatalln("Error loading .env file")
+		scanner := bufio.NewScanner(os.Stdin)
+		quit := false
+
+		for !quit {
+			fmt.Print("Type your question(quit for quit): ")
+
+			if !scanner.Scan() {
+				break
+			}
+
+			question := scanner.Text()
+			switch question {
+			case "quit":
+				quit = true
+
+			default:
+				GetResponse(client, ctx, question)
+			}
 		}
 
-		apiKey := os.Getenv("OPENAPI_API_KEY")
-		if apiKey == "" {
-			log.Fatalln("Missing OPENAPI API KEY")
-		}
-
-		ctx := context.Background()
-		client := gpt3.NewClient(apiKey)
-
-		message := viper.GetString("message")
-		if message == "" {
-			cmd.Help()
-			os.Exit(0)
-		}
-
-		resp, err := client.Completion(ctx, gpt3.CompletionRequest{
-			Prompt:    []string{message},
-			MaxTokens: gpt3.IntPtr(30),
-			Stop:      []string{"."},
-			Echo:      true,
-		})
-		if err != nil {
-			log.Fatalln(err)
-		}
-		fmt.Println(resp.Choices[0].Text)
 	},
 }
 
 // Execute adds all child commands to the root command and sets flags appropriately.
 // This is called by main.main(). It only needs to happen once to the rootCmd.
 func Execute() {
+
+	if err := godotenv.Load(); err != nil {
+		log.Fatalln("Error loading .env file")
+	}
+
+	apiKey := os.Getenv("OPENAPI_API_KEY")
+	if apiKey == "" {
+		log.Fatalln("Missing OPENAPI API KEY")
+	}
+
+	ctx = context.Background()
+	client = gpt3.NewClient(apiKey)
+
 	err := rootCmd.Execute()
 	if err != nil {
 		os.Exit(1)
@@ -96,9 +120,6 @@ func init() {
 	// Cobra also supports local flags, which will only run
 	// when this action is called directly.
 	// rootCmd.Flags().BoolP("toggle", "t", false, "Help message for toggle")
-
-	rootCmd.Flags().StringP("message", "m", "", "Your message to ChatGPT")
-	viper.BindPFlag("message", rootCmd.Flags().Lookup("message"))
 }
 
 // initConfig reads in config file and ENV variables if set.
